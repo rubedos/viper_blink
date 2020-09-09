@@ -161,12 +161,14 @@
 				}
 			});
 			lastColor.push(maxColor);
-			while (lastColor.length > 50) lastColor.shift();
+			if (lastColor < 28) return;
+			while (lastColor.length > 30) lastColor.shift();
 			
 			if (currentColor != lastColor.max()) {
 				currentColor = lastColor.max();
 				document.getElementById("color").innerText = "Color: " + colIndexToColor(currentColor);
 				speakColor( colIndexToColor(currentColor));
+				lastColor = [];
 			}
 		}
 		
