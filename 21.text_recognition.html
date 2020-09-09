@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Text recognition. VIPER ROSJS</title>
+  <meta charset="utf-8" />
+  <script src="3rdparty/eventemitter2.js"></script>
+  <script src="3rdparty/roslib.js"></script>
+  <script src="3rdparty/base64-binary.js"></script>
+  <script src="viper.js" type="text/javascript"></script>
+  <script src='https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js'></script>
+ <!-- <script src='https://cdn.rawgit.com/naptha/tesseract.js/1.0.10/dist/tesseract.js'></script> -->
+  <!--<script src='index.js'></script>
+  <script src='worker.js'></script>
+  <script src='Tesseract.js'></script>
+		window.Tesseract = Tesseract.create({
+			// Path to worker
+			workerPath: '/worker.js',
+			// Path of folder where the language trained data is located
+			langPath: '/data/',
+			// Path to index script of the tesseract core ! https://github.com/naptha/tesseract.js-core
+			corePath: '/index.js',
+		});-->
+  <script>
+
+	
+		/** This example demonstrated how to subscribe to special type of topic - RGB image stream and render it in canvas element
+		 */
+		var viper = null; 	// viper handle
+		var sub = null;		// subscription handle
+		var requiredRes = '1280x360';	// What stereoimage resolution required to recognize the text
+		function onload() {
+		}
+
+		function connect() {
+			var ip = document.getElementById('viper_ip').value;
+			viper = new VIPER({viper_ip : ip});
+			viper.onConnected = onConnected;
+			viper.connect();
+		}
+		
+		// Callback invoked when connected to viper
+		function onConnected() {
+			var namespace = viper.deviceInfo.get("VIPER_PREFIX");
+
+			// Using minimal resolution
+			cfg = viper.getConfigNode('/' + namespace + '/cvm_v4l2_camera');
+			param = cfg.getParameter('resolution');
+			viper.log(cfg.node, '/', param.name, ' is ', param.value);
+			if (param.value != requiredRes)
+				viper.setParameter(cfg.node, param.name, requiredRes);
+
+			var topic = '/' + namespace + '/left/image_raw';
+			console.log('Subscribing to video stream on "' + topic + '"');
+			var canvas = document.getElementById('viewCanvas');
+			sub = viper.subscribeImage(topic, function(rgb, width, height){
+				countFrames();
+				//console.log('Received image from topic ', sub.name, '; ' + width + ' x ' + height);
+				viper.drawImage(canvas, rgb, width, height);
+				stopVideoStream();
+				detectText(canvas, width, height);
+			});
+		}
+		
+		// Close subscriptions and connections
+		function finalize() {
+			sub.unsubscribe();
+			viper.close();
+		}
+		
+		// Cancel subscription
+		function stopVideoStream() {
+			sub.unsubscribe();
+		}
+		
+		function detectText(img){//rgbBuffer, width, height) {
+			//let img	= document.getElementById("kaunasImg");
+			let i = 1;
+			//Worker.setParameters("tessedit_char_whitelist","ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzĄČĘĖĮŠŲŪąčęėįšųū");
+			Tesseract.recognize(
+			  //'https://tesseract.projectnaptha.com/img/eng_bw.png',
+			  //'https://klaipeda.diena.lt/sites/default/files/styles/940x000/public/Vilniausdiena/Vartotoju%20zona/kamiles/38255355_1916477891745367_7889954832281239552_o.jpg?itok=zwTbB0V8',
+				img,
+			  'lit',
+			  { 
+				logger: m => { console.log(m); 
+					if (i++%20 ==0) speakText(".");
+					document.getElementById("phrase").innerText += ".";
+				}
+				//,worker: w => w.setParameters("tessedit_char_whitelist","ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzĄČĘĖĮŠŲŪąčęėįšųū")
+			  }
+			).then(({ data: { text } }) => {
+			
+			  console.log(text);
+			  text = filterText(text);
+			  document.getElementById("phrase").innerText = "Detected: " + text.toUpperCase();
+			  console.log('Filtered: ' + text);
+			  speakText(text);
+			})
+		}
+		
+		function filterText(text){
+			let result = "";
+			let words = text.split(/[ .:;?!~,`"&|()<>{}\[\]\r\n/\\]+/);
+			words.forEach(function(word, i) {
+				//var letterNumber = /^[0-9a-zA-Z]+$/;
+				if (word.length > 0)
+					if (word.length == 1 ) {
+						if (/*word.match(/^[0-9]+$/) ||*/ word.toLowerCase() == "a" || word.toLowerCase() == "i") {
+						result += word + " ";
+					}}
+					else if (word.match(/^[0-9]+$/) || word.match(/^[a-zA-Z]+$/)) 
+					{
+						result += word + " ";
+					}
+			});
+			return result;
+		}
+
+		function speakText(text){
+			speak(text, 1, 1, 1, "Microsoft Zira Desktop - English (United States)");
+			//speak(text, 1, 1, 1, "Google русский");
+			//speak(text, 1, 1, 1, "Google UK English Female");
+		}
+		
+		var lastCalledTime;
+		var fps;
+		function countFrames() {
+			if(!lastCalledTime) {
+				lastCalledTime = Date.now();
+				fps = 0;
+			 return;
+			}
+			delta = (Date.now() - lastCalledTime)/1000;
+			lastCalledTime = Date.now();
+			fps = 1/delta;
+			document.getElementById("fps_label").innerText = 'Render FPS: ' + Number((fps).toFixed(1));
+		}
+		
+		let test = "V.\ a š į '| A Blink of an Eve |1s What || separates You, l From Realityį[ ššiiiom.Y' ir";
+		
+		//setTimeout( function() { speakText(".");}, 2000);
+	</script>
+</head>
+<body style="background: #333333; color:white; cover;font-family:Arial;" onload="onload();" onunload="finalize()">
+	<p id="msg"></p>
+	<p><div style="color:darkgray;size:small">Hint: open javascript console for more information...</div></p>
+	<div id="inputs">Viper IP:&nbsp;<input id="viper_ip" value="10.42.0.137"/><button style="padding-right:20px; padding-left:20px;" onclick="connect();">Connect</button></div>
+	<table>
+	<tr>
+		<td style="text-align: right;">
+			<button style="padding-right:20px; padding-left:20px;" onclick="detectText(document.getElementById('testImg'));">Test</button>
+			<button style="padding-right:20px; padding-left:20px;" onclick="stopVideoStream();">Stop</button>
+		</td>
+		<td style="width:150px"><div id="fps_label"/></td>
+	</tr>
+	</table>
+	<div>
+		<canvas id="viewCanvas"/>
+	</div>
+	<p id="phrase"></p>
+
+
+	<p><img src="blink.png" id="testImg"/></p>
+	<!-- <p><img src="text_sample3.jpg" id="kaunasImg"/></p> -->
+</body>
+  <script src="webspeech.js"></script>
+
+</html>

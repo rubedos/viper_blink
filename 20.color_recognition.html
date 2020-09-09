@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Color recognition. VIPER ROSJS</title>
+  <meta charset="utf-8" />
+  <script src="3rdparty/eventemitter2.js"></script>
+  <script src="3rdparty/roslib.js"></script>
+  <script src="3rdparty/base64-binary.js"></script>
+  <script src="viper.js" type="text/javascript"></script>
+    <script>
+		/** This example demonstrated how to subscribe to special type of topic - RGB image stream and render it in canvas element
+		 */
+		var viper = null; 	// viper handle
+		var sub = null;		// subscription handle
+		function onload() {
+		}
+
+		function connect() {
+			var ip = document.getElementById('viper_ip').value;
+			viper = new VIPER({viper_ip : ip});
+			viper.onConnected = onConnected;
+			viper.connect();
+		}
+		
+		// Callback invoked when connected to viper
+		function onConnected() {
+			var namespace = viper.deviceInfo.get("VIPER_PREFIX");
+			var topic = '/' + namespace + '/left/image_raw';
+			var canvas = document.getElementById('viewCanvas');
+			sub = viper.subscribeImage(topic, function(rgb, width, height){
+				countFrames();
+				//console.log('Received image from topic ', sub.name, '; ' + width + ' x ' + height);
+				viper.drawImage(canvas, rgb, width, height);
+				detectColor(rgb, width, height);
+			});
+			
+			// Using minimal resolution
+			cfg = viper.getConfigNode('/' + namespace + '/cvm_v4l2_camera');
+			param = cfg.getParameter('resolution');
+			viper.log(cfg.node, '/', param.name, ' is ', param.value);
+			if (param.value != '320x90')
+				viper.setParameter(cfg.node, param.name, '320x90');
+
+		}
+		
+		// Close subscriptions and connections
+		function finalize() {
+			sub.unsubscribe();
+			viper.close();
+		}
+		
+		// Cancel subscription
+		function stopVideoStream() {
+			sub.unsubscribe();
+		}
+		
+		let white = 0,
+		black =1,
+		yellow =2,
+		red =3,
+		green =4,
+		blue = 5,
+		cyan = 6,
+		magenta = 7
+		gray = 8
+		
+		function rgbToHsl(r, g, b){
+			r /= 255;
+			g /= 255;
+			b /= 255;
+			
+			let cmin = Math.min(r,g,b),
+			cmax = Math.max(r,g,b),
+			delta = cmax - cmin,
+			h = 0,
+			s = 0,
+			l = 0;
+			
+			// Calculate hue
+			// No difference
+			if (delta == 0) h = 0;
+			// Red is max
+			else if (cmax == r)	h = ((g - b) / delta) % 6;
+			// Green is max
+			else if (cmax == g)	h = (b - r) / delta + 2;
+			// Blue is max
+			else h = (r - g) / delta + 4;
+
+			h = Math.round(h * 60);
+
+			// Make negative hues positive behind 360°
+			if (h < 0)  h += 360;
+			
+			// Calculate lightness
+			l = (cmax + cmin) / 2;
+
+			// Calculate saturation
+			s = delta == 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+
+			// Multiply l and s by 100
+			s = +(s * 100).toFixed(1);
+			l = +(l * 100).toFixed(1);		
+			return {l:l, h:h, s:s};
+		}
+		
+		console.log(rgbToHsl(255, 0, 255));
+		
+		function classifyColor(r, g, b)	{
+
+			let hsl = rgbToHsl(r, g, b);
+			let s = hsl.s;
+			let h = hsl.h;
+			let l = hsl.l;
+			
+			/*float hue = c.GetHue();
+			float sat = c.GetSaturation();
+			float lgt = c.GetLightness();*/
+
+			if (l < 20)  return black;
+			if (l > 80)  return white;
+
+			if (s < 25) return gray;
+
+			if (h < 30)   return red;
+			if (h < 90)   return yellow;
+			if (h < 150)  return green;
+			if (h < 210)  return cyan;
+			if (h < 270)  return blue;
+			if (h < 330)  return magenta
+			return red;
+		}
+		
+		// Implementing max in array
+		Array.prototype.max = function() {
+			return Math.max.apply(null, this);
+		};
+		
+		let lastColor = [];
+		let currentColor = black;
+		function detectColor(rgbBuffer, width, height) {
+			var colorBucket = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+			var r = 0, g = 0, b = 0;
+			for (var y = 0; y < height; y++)
+				for (var x = 0; x < width; x++)
+				{
+				var i = (y * width + x) * 3;  // 3 bytes per pixel 
+				var pi = (y * width + x) * 4; // 4 bytes per pixel 
+				r = rgbBuffer[i];
+				g = rgbBuffer[i+1];
+				b = rgbBuffer[i+2];
+				colorBucket[classifyColor(r, g, b)]++;
+			}
+			
+			max = 0;
+			maxColor = lastColor;
+			colorBucket.forEach(function(count, i) {
+				if (count > max) {
+					max = count;
+					maxColor = i;
+				}
+			});
+			lastColor.push(maxColor);
+			while (lastColor.length > 50) lastColor.shift();
+			
+			if (currentColor != lastColor.max()) {
+				currentColor = lastColor.max();
+				document.getElementById("color").innerText = "Color: " + colIndexToColor(currentColor);
+				speakColor( colIndexToColor(currentColor));
+			}
+		}
+		
+		function colIndexToColor(colIndex) {
+			if (colIndex == black) return "yoda";
+			else if (colIndex == white) return "balta";
+			else if (colIndex == gray) return "peelka";
+			else if (colIndex == red) return "rawdona";
+			else if (colIndex == yellow) return "geltona";
+			else if (colIndex == blue) return "meleena";
+			else if (colIndex == green) return "jalya";
+			else if (colIndex == cyan) return "zheedra";
+			else if (colIndex == magenta) return "rozheene";
+			return "nejeenaw"
+		}
+
+		function speakColor(color){
+			speak(color, 1, 1, 1, "Google русский");
+			//speak(color, 1, 1, 1, "Google UK English Female");
+		}
+		
+		var lastCalledTime;
+		var fps;
+		function countFrames() {
+			if(!lastCalledTime) {
+				lastCalledTime = Date.now();
+				fps = 0;
+			 return;
+			}
+			delta = (Date.now() - lastCalledTime)/1000;
+			lastCalledTime = Date.now();
+			fps = 1/delta;
+			document.getElementById("fps_label").innerText = 'Render FPS: ' + Number((fps).toFixed(1));
+		}
+	</script>
+</head>
+<body style="background: #333333; color:white; cover;font-family:Arial;" onload="onload();" onunload="finalize()">
+	<p id="msg"></p>
+	<p><div style="color:darkgray;size:small">Hint: open javascript console for more information...</div></p>
+	<div id="inputs">Viper IP:&nbsp;<input id="viper_ip" value="10.42.0.137"/><button style="padding-right:20px; padding-left:20px;" onclick="connect();">Connect</button></div>
+	<table>
+	<tr>
+		<td style="text-align: right;">
+			<button style="padding-right:20px; padding-left:20px;" onclick="speakColor("geltona");">Test</button>
+			<button style="padding-right:20px; padding-left:20px;" onclick="stopVideoStream();">Stop</button>
+		</td>
+		<td style="width:150px"><div id="fps_label"/></td>
+	</tr>
+	</table>
+	<div>
+		<canvas id="viewCanvas"/>
+	</div>
+	<p id="color"></p>
+</body>
+  <script src="webspeech.js"></script>
+
+</html>

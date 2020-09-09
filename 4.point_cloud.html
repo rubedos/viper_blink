@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Point Cloud. VIPER ROSJS</title>
+	<meta charset="utf-8" />
+	<script src="3rdparty/three.js"></script>
+	<script src="3rdparty/controls/OrbitControls.js"></script>
+	<script src="3rdparty/eventemitter2.js"></script>
+	<script src="3rdparty/roslib.js"></script>
+	<script src="3rdparty/ROS3D/build/ros3d.js"></script>
+	<script src="3rdparty/base64-binary.js"></script>
+	<script src="viper.js" type="text/javascript"></script>
+	<script src="3rdparty/WebGL.js"></script>
+	
+    <script>
+		/** This example demonstrates 3D pointcloud reading from VIPER. 
+			REMARK: Reading points directly is a lot of data to transfer and thus not a very good performance. It is recommended to 
+			read Disparity(depth map) and RGB image, and then transform them to pointcloud
+		 */
+		if ( WEBGL.isWebGLAvailable() === false ) {
+			document.body.appendChild( WEBGL.getWebGLErrorMessage() );
+		} 
+		var viper = null; 	// viper handle
+		var sub = null;		// subscription handle
+		var cloud = null; 	// pointcloud model
+		var viewer = null;	// 3d viewer
+		var pointSize = 3.0;
+		var pointCloudSpace;	// This is required to transform from camera space to ROS space coordinates
+		// Select one of the pointcloud delivery methods:
+		var subscribeFunction 	 = subscribeDisparity;
+								//= subscribePoints;
+		var namespace;
+		function onload() {
+			viewer = VIPER.createDefault3DViewer({ divElement: 'viewer', width: 800, height: 600, addAxis: false });
+			viewer.cameraControls.target = new THREE.Vector3(0, 0, 2);
+			pointCloudSpace = new THREE.Group();
+			//pointCloudSpace.rotation.set(Math.PI/2, Math.PI/2, 0);
+			viewer.scene.add(pointCloudSpace);
+			var axesHelper = new THREE.AxesHelper( 1 );
+			pointCloudSpace.add( axesHelper );
+		}
+		
+		function init(w, h){
+			var amount = w * h;
+			cloud = viper.createPointCloud3D(w, h);
+			pointCloudSpace.add(cloud);
+		}
+
+		function connect() {
+			var ip = document.getElementById('viper_ip').value;
+			viper = new VIPER({viper_ip : ip});
+			viper.onConnected = onConnected;
+			viper.connect();
+		}
+		
+		// Callback invoked when connected to viper
+		function onConnected() {
+			namespace = viper.deviceInfo.get("VIPER_PREFIX");
+			subscribeFunction();
+		}
+		
+		function subscribePoints() {
+			sub = viper.subscribePoints('/' + namespace + '/points2', 
+			function(buffer, w, h){
+				countFrames();
+				if (cloud == null) init(w, h);
+				// TODO: here process points or just render them:
+				pointSize = parseFloat( document.getElementById('pointSize').value);
+				viper.updatePointsBuffer(buffer, cloud, w, h, pointSize);
+			});		
+		}
+		
+		function subscribeDisparity() {
+			sub = viper.subscribeStereoimage('/' + namespace + '/stereo/disparity', 
+				function(data){
+					countFrames();
+					if (cloud == null) init(data.width, data.height);
+					// TODO: here process points or just render them:
+					pointSize = parseFloat( document.getElementById('pointSize').value);
+					viper.rgbdToCloud(data, cloud, pointSize);
+			});		
+		}
+		
+		// Close subscriptions and connections
+		function finalize() {
+			stopVideoStream();
+			viper.close();
+		}
+		
+		// Cancel subscription
+		function stopVideoStream() {
+			sub.unsubscribe();
+		}
+		
+		var lastCalledTime;
+		var lastUpdate = Date.now();
+		var fps;
+		function countFrames() {
+			if(!lastCalledTime) {
+				lastCalledTime = Date.now();
+				fps = 0;
+			 return;
+			}
+			delta = (Date.now() - lastCalledTime)/1000;
+			lastCalledTime = Date.now();
+			fps = 1/delta;
+			if ((Date.now() - lastUpdate) > 200) {
+				lastUpdate = Date.now();
+				document.getElementById("fps_label").innerText = 'Render FPS: ' + Number((fps).toFixed(1));
+			}
+		}
+
+	</script>
+</head>
+<body style="background: #333333; color:white; cover;font-family:Arial;" onload="onload();" onunload="finalize()">
+	<p><div style="color:darkgray;size:small">Hint: open javascript console for more information (Ctrl + Shift + I)...</div></p>
+	<div id="inputs">Viper IP:&nbsp;<input id="viper_ip" value="192.168.1.170"/><button style="padding-right:20px; padding-left:20px;" onclick="connect();">Connect</button></div>
+	<table>
+	<tr>
+		<td style="text-align: right;">
+			<button style="padding-right:20px; padding-left:20px;" onclick="stopVideoStream();">Stop</button>
+		</td>
+		<td style="width:150px"><div id="fps_label"/></td>
+	</tr>
+	
+	<tr>
+		<td>Point size:</td>
+		<td><input value="3.0" id="pointSize" type="number"></input></td>
+	</tr>
+	</table>
+	<div id="viewer"></div>
+</body>
+
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Hello World. VIPER ROSJS</title>
+  <meta charset="utf-8" />
+  <script src="3rdparty/eventemitter2.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+  <script src="3rdparty/roslib.js"></script>
+  <script src="3rdparty/base64-binary.js"></script>
+    <script>
+	class Callbacker
+	{
+		constructor()
+		{
+			this.callbacks = [];
+			this.ts = [];
+		}
+		
+		addCallback(t, callback){
+			this.callbacks.push(callback);
+			this.ts.push(t);
+		}
+		
+		runThemAll(){
+			for (var i = 0; i < this.callbacks.length; i++) {
+				this.callbacks[i](this.ts[i]+9);
+			}
+		}
+	}
+	
+	class Receiver
+	{
+		constructor()
+		{
+			this.t = null;
+		}
+		
+		assign(t)
+		{
+			this.t = t;
+		}
+	}
+	
+		function onload() {
+			var cb = new Callbacker();
+			var r = [new Receiver(), new Receiver(), new Receiver()];
+			for (var i =0 ; i < 3; i++) {
+				cb.addCallback('' + i, r[i].assign.bind(r[i]));
+			}
+			/*cb.addCallback('1', function(t){ Functor(t).then(r[0])});
+			cb.addCallback('2', function(t){ Functor(t).then(r[1])});			
+			cb.addCallback('3', function(t){ Functor(t).then(r[2])});*/
+			cb.runThemAll();
+		}
+		
+		
+		function Functor(x) {
+		  return {
+			then: function (rc) {
+			  rc.t = x;
+			}
+			};
+		}
+		
+	</script>
+</head>
+<body style="background: lightgray; cover;font-family:Arial;" onload="onload();" onunload="finalize()">
+</body>
+</html>
