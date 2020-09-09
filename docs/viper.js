@@ -26,7 +26,7 @@ this.connect = function() {
   {
     // Connect to ROS
     this.ros = new ROSLIB.Ros({
-      url : 'ws://' + this.ros_ip + ':9090'
+      url : 'wss://' + this.ros_ip + ':9090'
     });
 
     this.ros.on('connection', function(){
